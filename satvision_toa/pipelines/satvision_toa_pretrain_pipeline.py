@@ -4,11 +4,11 @@ import torchmetrics
 import lightning.pytorch as pl
 from torch.utils.data import DataLoader
 
-from pytorch_caney.models.mim import build_mim_model
-from pytorch_caney.optimizers.build import build_optimizer
-from pytorch_caney.datasets.sharded_dataset import ShardedDataset
+from satvision_toa.models.mim import build_mim_model
+from satvision_toa.optimizers.build import build_optimizer
 
 from satvision_toa.transforms.mim_modis_toa import MimTransform
+from satvision_toa.datasets.sharded_dataset import ShardedDataset
 
 
 # -----------------------------------------------------------------------------

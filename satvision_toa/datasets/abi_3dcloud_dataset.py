@@ -9,7 +9,7 @@ from torchgeo.datasets import NonGeoDataset
 
 
 # -----------------------------------------------------------------------------
-# AbiToa3DCloudDataModule
+# AbiToa3DCloudDataset
 # -----------------------------------------------------------------------------
 class AbiToa3DCloudDataset(NonGeoDataset):
 

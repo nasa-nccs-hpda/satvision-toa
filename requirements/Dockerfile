@@ -105,7 +105,9 @@ RUN pip --no-cache-dir install \
     yacs \
     termcolor \
     segmentation-models-pytorch \
-    coverage
+    coverage \
+    satpy \
+    pyresample
     # git+https://github.com/nasa-nccs-hpda/satvision-toa.git@main
 
 HEALTHCHECK NONE

@@ -1,3 +1,5 @@
+import argparse
+from datetime import datetime
 from lightning.pytorch.strategies import DeepSpeedStrategy
 
 
@@ -43,3 +45,14 @@ def get_distributed_train_batches(config, trainer):
     else:
         return config.DATA.LENGTH // \
             (config.DATA.BATCH_SIZE * trainer.world_size)
+
+
+# -------------------------------------------------------------------------
+# validate_date
+# -------------------------------------------------------------------------
+def valid_date(s):
+    try:
+        return datetime.strptime(s, "%Y-%m-%d")
+    except ValueError:
+        msg = "not a valid date: {0!r}".format(s)
+        raise argparse.ArgumentTypeError(msg)

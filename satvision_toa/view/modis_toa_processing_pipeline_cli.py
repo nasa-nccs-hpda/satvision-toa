@@ -80,6 +80,7 @@ def main():
     # start object of SwathToGrid
     pipeline = ModisSwathToGrid(
         data_path=args.data_filename,
+        data_regex=args.data_regex,
         output_dir=args.output_dir,
         bands=args.bands,
         debug=args.debug

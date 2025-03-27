@@ -107,7 +107,8 @@ RUN pip --no-cache-dir install \
     segmentation-models-pytorch \
     coverage \
     satpy \
-    pyresample
+    pyresample \
+    netCDF4
     # git+https://github.com/nasa-nccs-hpda/satvision-toa.git@main
 
 HEALTHCHECK NONE

@@ -8,6 +8,7 @@ import logging
 import xarray as xr
 import rioxarray as rxr
 import multiprocessing
+from glob import glob
 from osgeo import gdal
 from pathlib import Path
 from pyresample import geometry
@@ -52,39 +53,37 @@ class ModisSwathToGrid(object):
 
         # set data filenames based on the input provided
         if data_path is not None:
-            self.data_filenames = ddddddd
+            self.data_filenames = self._read_data_paths(
+                data_path, regex=False)
         elif data_regex is not None:
-            self.data_filenames = XXXX
+            self.data_filenames = self._read_data_paths(
+                data_regex, regex=True)
         else:
-            sys.exit('Need to specify one of -d or -r for data selection.')
+            sys.exit(
+                'ERROR: Need to specify one of -d or -r for data selection.')
+
+        # get the data path name
+        # takes a str in the form of MOD021KM.A2000055.2355.061.2017171194832
+        # and joins together the first two values for type
+        # year and day of the mosaic to be generated
+        self.data_filename_key = '_'.join(
+            ((Path(self.data_filenames[0]).stem).split('.')[:2]))
+        logging.info(f'Data filenames belong to: {self.data_filename_key}')
 
         # set data path and output directory
         self.data_path = data_path
-        self.output_dir = output_dir
-
-        # intermediate filename to save filtered output paths
-        # self.filtered_output_filename = \
-        #    self.outputDir / f"{str(dataPathName)}{self.CACHE_DAY_POST}"
-
-        """
-        # get the data path name
-        dataPathName = self.dataPath.stem
-
+        self.output_dir = Path(output_dir)
 
         # set band ids
-        self.bandIDs = bands
-
-        # directory to store swaths
-        self.swathDir = self.outputDir / '1-swaths'
-        self.swathDir.mkdir(exist_ok=True)
-
-        # directory to store mosaics
-        self.mosaicDir = self.outputDir / '2-mosaic'
-        self.mosaicDir.mkdir(exist_ok=True)
+        self.band_ids = bands
 
         # directory to store cache data
-        self.cacheDir = self.outputDir / '3-cache'
-        self.cacheDir.mkdir(exist_ok=True)
+        self.cache_dir = self.output_dir / '1-cache'
+        self.cache_dir.mkdir(exist_ok=True)
+
+        # directory to store mosaics
+        self.mosaic_dir = self.output_dir / '2-mosaic'
+        self.mosaic_dir.mkdir(exist_ok=True)
 
         # debug mode setup
         self.debug = debug
@@ -92,9 +91,9 @@ class ModisSwathToGrid(object):
         # force writing of files
         self.force = False
 
-        # setup logger
-        self.logger = logger
-        """
+        # intermediate filename to save filtered output paths
+        self.filtered_output_filename = \
+            self.output_dir / f"{self.data_filename_key}{self.CACHE_DAY_POST}"
 
     # --------------------------------------------------------------------------
     # mosaic
@@ -103,33 +102,33 @@ class ModisSwathToGrid(object):
     # --------------------------------------------------------------------------
     def mosaic(self) -> None:
 
+        logging.info('Starting mosaic process...')
+
         # output filename to store final mosaic
         output_filename = str(
-            self.mosaicDir / f"{str(self.dataPath.stem)}-global.tif")
-        self.logger.info(f'Selected output path: {output_filename}')
+            self.mosaic_dir / f"{self.data_filename_key}_mosaic.tif")
+        logging.info(f'Selected output path: {output_filename}')
 
         # skip processing if file already exists
         if os.path.exists(output_filename) and not self.force:
-            self.logger.info(f'Skipping {output_filename}, already exists.')
+            logging.info(f'Skipping {output_filename}, already exists.')
             return
 
-        """
         # set default state before proceeding with processing
-        filteredPaths = None
-
-        self.logger.info(f'Intermediate filtered file {self.filteredOutPath}')
+        filtered_paths = None
+        logging.info(
+            f'Intermediate filtered file: {self.filtered_output_filename}')
 
         # if the day filtered path does not exist
-        if not self.filteredOutPath.exists():
-
-            # return list of data paths in PosixPath type
-            dataPaths = self._read_data_paths(self.dataPath)
+        if not self.filtered_output_filename.exists():
 
             # dict with metadata from filename list
-            self.logger.info(
-                f'Processing metadata for {len(dataPaths)} files.')
-            metaDataDict = self._getMetaData(dataPaths)
+            logging.info(
+                f'Processing metadata for {len(self.data_filenames)} files.')
+            metadata_dict = self._get_metadata(self.data_filenames)
+            print(metadata_dict)
 
+            """
             # filter day night and view angle
             filteredPaths = self._filterDataPaths(metaDataDict)
             assert len(filteredPaths) > 0, \
@@ -141,15 +140,18 @@ class ModisSwathToGrid(object):
 
             # save cache file with text files
             self._cachePathStrs(filteredPaths)
-            self.logger.info(
+            logging.info(
                 f'Saved {self.filteredOutPath} to cache files list.')
+            """
+        """
+
 
         # if we were able to cache files, proceed to read data and mosaic
         if filteredPaths is None:
             filteredPaths = self._read_data_paths(self.filteredOutPath)
             filteredPaths = list(map(str, filteredPaths))
 
-        self.logger.info(
+        logging.info(
             f'Initializing satpy with {len(filteredPaths)} files.')
 
         # initialize satpy
@@ -160,17 +162,17 @@ class ModisSwathToGrid(object):
         # reader_kwargs={'mask_saturated': False}
 
         # too much output for now
-        self.logger.info(
+        logging.info(
             modisScene.available_dataset_names(reader_name=self.READER))
 
         # too much output for now
-        # self.logger.info(
+        # logging.info(
         #    modisScene.available_dataset_ids(reader_name=self.READER))
 
         # load selected scenes
         modisScene.load(self.bandIDs)#, modifier=None)#, generate=False)
 
-        self.logger.info(
+        logging.info(
             f'Resampling data files for {len(self.bandIDs)} bands.')
 
         # resample imagery
@@ -180,7 +182,7 @@ class ModisSwathToGrid(object):
             datasets=self.bandIDs,
             resampler='ewa'#'bucket_avg'#'nearest'#'bilinear'#'bucket_avg'#nearest'#ewa',#,#'nearest'  #'ewa',
         )
-        self.logger.info('Done with resampling step.')
+        logging.info('Done with resampling step.')
 
         # resampledModisScene.persist()
 
@@ -200,7 +202,7 @@ class ModisSwathToGrid(object):
                 filename=str(Path(output_filename).with_suffix('.nc')),
                 datasets=self.bandIDs,
             )
-        self.logger.info('Done with saving step.')
+        logging.info('Done with saving step.')
 
         # output bands, for now only the first 3
         output_bands = [f'CHANNEL_{i}' for i in self.bandIDs]
@@ -218,7 +220,7 @@ class ModisSwathToGrid(object):
         # compress='LZW')
         # x[['CHANNEL_1', 'CHANNEL_2', 'CHANNEL_3', 'CHANNEL_4']]
 
-        self.logger.info(f"Done processing, saved {output_filename} file.")
+        logging.info(f"Done processing, saved {output_filename} file.")
         """
         return
 
@@ -229,95 +231,108 @@ class ModisSwathToGrid(object):
     # --------------------------------------------------------------------------
     def _read_data_paths(self, data_path: str, regex: bool = False) -> list:
 
-        if not data_path.exists():
-            raise FileNotFoundError(data_path)
+        # get glob from regex
+        if regex:
 
-        """
-        with open(dataPath, 'r') as fh:
+            # get filenames from regex
+            data_filenames = glob(data_path)
 
-            dataPaths = []
+        # assuming it comes from text file
+        else:
 
-            for line in list(fh.readlines()):
+            # make sure text file exists
+            if not data_path.exists():
+                raise FileNotFoundError(data_path)
 
-                dataFilename = pathlib.Path(line.strip())
+            # iterate over lines in file
+            with open(data_path, 'r') as fh:
 
-                if not dataFilename.exists() and \
-                        'HDF' not in str(dataFilename):
+                data_filenames = []
 
-                    raise FileNotFoundError(dataFilename)
+                for line in list(fh.readlines()):
 
-                dataPaths.append(dataFilename)
+                    data_filename = pathlib.Path(line.strip())
 
-        return dataPaths
-        """
+                    if not data_filename.exists() and \
+                            'HDF' not in str(data_filename):
+
+                        raise FileNotFoundError(data_filename)
+
+                    data_filenames.append(data_filename)
+
+        # check if list is empty
+        if len(data_filenames) == 0:
+            sys.exit('ERROR: Could not find any .hdf files to process.')
+
+        return data_filenames
+
     # --------------------------------------------------------------------------
     # _getMetaData
     #
     # get metadata from each path
     # --------------------------------------------------------------------------
-    def _getMetaData(self, dataPaths: list) -> dict:
-        metaDataDict = {}
+    def _get_metadata(self, data_filenames: list) -> dict:
+        metadata_dict = {}
         pool = multiprocessing.Pool(
             processes=multiprocessing.cpu_count() * 10)
-        metaDataDict = pool.map(
-            self._getMetaDataSubProcess, list(map(str, dataPaths)))
-        return dict(ChainMap(*metaDataDict))
+        metadata_dict = pool.map(
+            self._get_metadata_subprocess, list(map(str, data_filenames)))
+        return dict(ChainMap(*metadata_dict))
 
     # --------------------------------------------------------------------------
     # _getMetaDataField
     #
     # get single field from metadata, return None if not available
     # --------------------------------------------------------------------------
-    def _getMetaDataField(
+    def _get_metadata_field(
                 self,
-                dataPath: str,
+                data_filename: str,
                 dataset: gdal.Dataset,
-                dataField: str
+                data_field: str
             ) -> float:
 
         try:
-            fieldValue = dataset.GetMetadata()[dataField]
-            # print(dataset.GetMetadata())
+            field_value = dataset.GetMetadata()[data_field]
         except KeyError:
-            msg = f'{dataPath} did not have the metadata' + \
-                f' key: {dataField}.'
-            self.logger.warning(msg)
-            fieldValue = None
+            msg = f'{data_filename} did not have the metadata' + \
+                f' key: {data_field}.'
+            logging.warning(msg)
+            field_value = None
 
-        return fieldValue
+        return field_value
 
     # --------------------------------------------------------------------------
     # _getMetaDataSubProcess
     #
     # get metadata from each path
     # --------------------------------------------------------------------------
-    def _getMetaDataSubProcess(self, dataPath: str) -> dict:
+    def _get_metadata_subprocess(self, data_filename: str) -> dict:
 
         # nested dictionary for data path metadata
-        metaDataDict = dict()
+        metadata_dict = dict()
 
         # dictionary for metadata for each field
-        fieldDataDict = dict()
+        field_data_dict = dict()
 
         # subprocess for single data file processing
-        dataSetBand1 = gdal.Open(str(dataPath))
+        dataset_band1 = gdal.Open(str(data_filename))
 
         # get day night metadata
-        fieldDataDict['DAYNIGHTFLAG'] = self._getMetaDataField(
-            dataPath, dataSetBand1, 'DAYNIGHTFLAG')
+        field_data_dict['DAYNIGHTFLAG'] = self._get_metadata_field(
+            data_filename, dataset_band1, 'DAYNIGHTFLAG')
 
-        # get dummy view angle metadata
-        # TODO: change to real value
-        with xr.open_dataset(dataPath, engine='netcdf4') as file_hdf:
-            fieldDataDict['SolarZenith'] = file_hdf['SolarZenith'].values.max()
+        # get solar zenith
+        with xr.open_dataset(data_filename, engine='netcdf4') as file_hdf:
+            field_data_dict['SolarZenith'] = \
+                file_hdf['SolarZenith'].values.max()
 
         # fill metadata dict with nested dict
-        metaDataDict[dataPath] = fieldDataDict
+        metadata_dict[data_filename] = field_data_dict
 
         # delete dataset band
-        del dataSetBand1
+        del dataset_band1
 
-        return metaDataDict
+        return metadata_dict
 
     # --------------------------------------------------------------------------
     # _filterDataPaths
@@ -386,14 +401,14 @@ class ModisSwathToGrid(object):
 
         output_path = self.swathDir / output_name
 
-        self.logger.info(output_path)
+        logging.info(output_path)
 
         if output_path.exists():
             return output_path
 
         cmd = f'{cmd} {str(output_path)}'
 
-        SystemCommand(cmd, logger=self.logger)
+        SystemCommand(cmd, logger=logging)
 
         return output_path
 
@@ -409,15 +424,15 @@ class ModisSwathToGrid(object):
 
         outputPath = self.mosaicDir / outputName
 
-        self.logger.info(outputPath)
+        logging.info(outputPath)
 
         geolocatedPathsStr = ' '.join(
             [str(geolocatedPath) for geolocatedPath in geolocatedPaths])
 
-        self.logger.info(geolocatedPathsStr)
+        logging.info(geolocatedPathsStr)
 
         cmd = f'{self.GDALMERGE} {str(outputPath)} {geolocatedPathsStr}'
 
-        SystemCommand(cmd, logger=self.logger)
+        SystemCommand(cmd, logger=logging)
 
         return

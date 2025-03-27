@@ -27,6 +27,7 @@ RUN apt-get update && \
         build-essential \
         make \
         swig \
+        libhdf5-dev \
         libnetcdf-dev \
         libacl1-dev \
         libgeos++-dev \

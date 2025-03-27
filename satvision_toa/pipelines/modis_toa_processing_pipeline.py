@@ -17,6 +17,7 @@ from dask.diagnostics import ProgressBar
 
 # trying to remove this dependency
 # from core.model.SystemCommand import SystemCommand
+gdal.UseExceptions()
 
 dask.config.set(num_workers=8)
 dask.config.set({"array.chunk-size": "1908MiB"})
@@ -126,23 +127,21 @@ class ModisSwathToGrid(object):
             logging.info(
                 f'Processing metadata for {len(self.data_filenames)} files.')
             metadata_dict = self._get_metadata(self.data_filenames)
-            print(metadata_dict)
 
-            """
             # filter day night and view angle
-            filteredPaths = self._filterDataPaths(metaDataDict)
-            assert len(filteredPaths) > 0, \
+            filtered_filenames = self._filter_data_paths(metadata_dict)
+            assert len(filtered_filenames) > 0, \
                 'No data files after filtering. ' + \
                 'Consider adding more files or reducing the filters.'
 
             # make sure file path values are strings
-            filteredPaths = list(map(str, filteredPaths))
+            filtered_filenames = list(map(str, filtered_filenames))
 
             # save cache file with text files
-            self._cachePathStrs(filteredPaths)
+            self._cache_filtered_paths(filtered_filenames)
             logging.info(
-                f'Saved {self.filteredOutPath} to cache files list.')
-            """
+                f'Saved {self.filtered_output_filename} to cache files list.')
+
         """
 
 
@@ -335,31 +334,32 @@ class ModisSwathToGrid(object):
         return metadata_dict
 
     # --------------------------------------------------------------------------
-    # _filterDataPaths
+    # _filter_data_paths
     #
     # filter by specific arguments
     # --------------------------------------------------------------------------
-    def _filterDataPaths(self, metadataDict: dict) -> list:
-        dataPaths = []
-        for key in tqdm.tqdm(metadataDict.keys()):
+    def _filter_data_paths(self, metadata_dict: dict) -> list:
+        data_filenames = []
+        for key in tqdm.tqdm(metadata_dict.keys()):
 
             # add AND to filter for zenith angle
             # Greenland - a lot of Lower solar zenith angles,
             # Greenland as an example (solar zenith greater than 72 no good)
-            if metadataDict[key]['DAYNIGHTFLAG'] == "Day":# and \
+            if metadata_dict[key]['DAYNIGHTFLAG'] == "Day":
+                # and \
                 #        metadataDict[key]['SolarZenith'] <= 72:#72:
-                dataPaths.append(key)
-        return dataPaths
+                data_filenames.append(key)
+        return data_filenames
 
     # --------------------------------------------------------------------------
     # _cachePathStrs
     #
     # save cache file with filenames
     # --------------------------------------------------------------------------
-    def _cachePathStrs(self, filteredPaths: list):
-        filteredPathStrsNewLine = [dp + '\n' for dp in filteredPaths]
-        with open(self.filteredOutPath, 'w') as fh:
-            fh.writelines(filteredPathStrsNewLine)
+    def _cache_filtered_paths(self, filtered_filenames: list):
+        filtered_filenames = [dp + '\n' for dp in filtered_filenames]
+        with open(self.filtered_output_filename, 'w') as fh:
+            fh.writelines(filtered_filenames)
         return
 
     # --------------------------------------------------------------------------

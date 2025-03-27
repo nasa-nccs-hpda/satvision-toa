@@ -28,6 +28,8 @@ RUN apt-get update && \
         make \
         swig \
         libhdf5-dev \
+        libhdf5-serial-dev \
+        libhdf4-dev \
         libnetcdf-dev \
         libacl1-dev \
         libgeos++-dev \
@@ -109,7 +111,8 @@ RUN pip --no-cache-dir install \
     coverage \
     satpy \
     pyresample \
-    netCDF4
+    netCDF4 \
+    h5py
     # git+https://github.com/nasa-nccs-hpda/satvision-toa.git@main
 
 HEALTHCHECK NONE

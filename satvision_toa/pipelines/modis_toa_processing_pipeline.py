@@ -15,10 +15,7 @@ from pyresample import geometry
 from collections import ChainMap
 from dask.diagnostics import ProgressBar
 
-# trying to remove this dependency
-# from core.model.SystemCommand import SystemCommand
 gdal.UseExceptions()
-
 dask.config.set(num_workers=8)
 dask.config.set({"array.chunk-size": "1908MiB"})
 
@@ -48,6 +45,7 @@ class ModisSwathToGrid(object):
                     '26', '27', '28', '29', '30',
                     '31', '32', '33'
                 ],
+                satpy_resampler: str = 'ewa',
                 debug: bool = False,
                 logger: str = None
             ) -> None:
@@ -96,6 +94,9 @@ class ModisSwathToGrid(object):
         self.filtered_output_filename = \
             self.output_dir / f"{self.data_filename_key}{self.CACHE_DAY_POST}"
 
+        # set satpy resampler
+        self.satpy_resampler = satpy_resampler
+
     # --------------------------------------------------------------------------
     # mosaic
     #
@@ -116,7 +117,7 @@ class ModisSwathToGrid(object):
             return
 
         # set default state before proceeding with processing
-        filtered_paths = None
+        filtered_filenames = None
         logging.info(
             f'Intermediate filtered file: {self.filtered_output_filename}')
 
@@ -142,85 +143,56 @@ class ModisSwathToGrid(object):
             logging.info(
                 f'Saved {self.filtered_output_filename} to cache files list.')
 
-        """
-
-
         # if we were able to cache files, proceed to read data and mosaic
-        if filteredPaths is None:
-            filteredPaths = self._read_data_paths(self.filteredOutPath)
-            filteredPaths = list(map(str, filteredPaths))
+        if filtered_filenames is None:
+            filtered_filenames = self._read_data_paths(
+                self.filtered_output_filename)
+            filtered_filenames = list(map(str, filtered_filenames))
 
         logging.info(
-            f'Initializing satpy with {len(filteredPaths)} files.')
+            f'Initializing satpy with {len(filtered_filenames)} files.')
 
         # initialize satpy
-        modisScene = satpy.Scene(
-            filenames=filteredPaths, reader=self.READER)
-
-        # filter_parameters
-        # reader_kwargs={'mask_saturated': False}
+        modis_scene = satpy.Scene(
+            filenames=filtered_filenames, reader=self.READER)
 
         # too much output for now
         logging.info(
-            modisScene.available_dataset_names(reader_name=self.READER))
-
-        # too much output for now
-        # logging.info(
-        #    modisScene.available_dataset_ids(reader_name=self.READER))
+            modis_scene.available_dataset_names(reader_name=self.READER))
 
         # load selected scenes
-        modisScene.load(self.bandIDs)#, modifier=None)#, generate=False)
+        modis_scene.load(self.band_ids)
 
         logging.info(
-            f'Resampling data files for {len(self.bandIDs)} bands.')
+            f'Resampling data files for {len(self.band_ids)} bands.')
 
         # resample imagery
-        resampledModisScene = modisScene.resample(
-            self._getTargetArea(),
-            #cache_dir=str(self.cacheDir),
-            datasets=self.bandIDs,
-            resampler='ewa'#'bucket_avg'#'nearest'#'bilinear'#'bucket_avg'#nearest'#ewa',#,#'nearest'  #'ewa',
+        # tried many resamplers, ewa was the best for this dataset
+        # 'bucket_avg', 'nearest', 'bilinear', 'bucket_avg'
+        # 'nearest', ewa'
+        resampled_modis_scene = modis_scene.resample(
+            self._get_target_area(),
+            datasets=self.band_ids,
+            resampler=self.satpy_resampler
         )
         logging.info('Done with resampling step.')
 
-        # resampledModisScene.persist()
-
-        # this step is a bit slower
-        #with ProgressBar():
-        #    resampledModisScene.save_datasets(
-        #        base_dir=str(self.mosaicDir),
-        #        filename="{name}.tif",
-        #        datasets=self.bandIDs,
-        #        dtype=np.float32,
-        #        enhance=False
-        #    )
-
         # this step is a bit faster
         with ProgressBar():
-            resampledModisScene.save_datasets(
+            resampled_modis_scene.save_datasets(
                 filename=str(Path(output_filename).with_suffix('.nc')),
-                datasets=self.bandIDs,
+                datasets=self.band_ids,
             )
         logging.info('Done with saving step.')
 
         # output bands, for now only the first 3
-        output_bands = [f'CHANNEL_{i}' for i in self.bandIDs]
+        output_bands = [f'CHANNEL_{i}' for i in self.band_ids]
         rr = rxr.open_rasterio(str(Path(output_filename).with_suffix('.nc')))
         rr[output_bands].isel(band=0).rio.to_raster(
             output_filename, compress='LZW')
 
-        # print(modisScene.all_dataset_ids())
-        # print(modisScene.all_dataset_names())
-        # print(resampledModisScene.all_dataset_ids())
-        # print(resampledModisScene.all_dataset_names())
-
-        # x.isel(band=0).rio.to_raster(
-        # 'test_MOD021KM_2020_182-global-v2.tif',
-        # compress='LZW')
-        # x[['CHANNEL_1', 'CHANNEL_2', 'CHANNEL_3', 'CHANNEL_4']]
-
         logging.info(f"Done processing, saved {output_filename} file.")
-        """
+
         return
 
     # --------------------------------------------------------------------------
@@ -240,7 +212,7 @@ class ModisSwathToGrid(object):
         else:
 
             # make sure text file exists
-            if not data_path.exists():
+            if not os.path.exists(data_path):
                 raise FileNotFoundError(data_path)
 
             # iterate over lines in file
@@ -266,7 +238,7 @@ class ModisSwathToGrid(object):
         return data_filenames
 
     # --------------------------------------------------------------------------
-    # _getMetaData
+    # _get_metadata
     #
     # get metadata from each path
     # --------------------------------------------------------------------------
@@ -279,7 +251,7 @@ class ModisSwathToGrid(object):
         return dict(ChainMap(*metadata_dict))
 
     # --------------------------------------------------------------------------
-    # _getMetaDataField
+    # _get_metadata_field
     #
     # get single field from metadata, return None if not available
     # --------------------------------------------------------------------------
@@ -301,7 +273,7 @@ class ModisSwathToGrid(object):
         return field_value
 
     # --------------------------------------------------------------------------
-    # _getMetaDataSubProcess
+    # _get_metadata_subprocess
     #
     # get metadata from each path
     # --------------------------------------------------------------------------
@@ -363,11 +335,11 @@ class ModisSwathToGrid(object):
         return
 
     # --------------------------------------------------------------------------
-    # _getTargetArea
+    # _get_target_area
     #
     #
     # --------------------------------------------------------------------------
-    def _getTargetArea(self):
+    def _get_target_area(self):
         target_extent = (-180.0, -90.0, 180.0, 90.0)  # Global lat/lon extent
         # 1 km resolution (0.01 degrees)
         target_resolution = 0.0174532925199433
@@ -386,53 +358,3 @@ class ModisSwathToGrid(object):
                 'b': 6356752.3142
             }, target_cols, target_rows, target_extent)
         return target_area
-
-    # --------------------------------------------------------------------------
-    # _orthoOne
-    #
-    # run -> processStrips -> runOneStrip -> stripToToa -> orthoOne
-    # --------------------------------------------------------------------------
-    def _geolocateData(self, dataPath):
-
-        cmd = f'{self.GDALWARP} {str(dataPath)}'
-
-        output_name = str(dataPath).split('"')[1]\
-            .split('/')[-1].replace('hdf', 'EV_1KM_RefSB.tif')
-
-        output_path = self.swathDir / output_name
-
-        logging.info(output_path)
-
-        if output_path.exists():
-            return output_path
-
-        cmd = f'{cmd} {str(output_path)}'
-
-        SystemCommand(cmd, logger=logging)
-
-        return output_path
-
-    # --------------------------------------------------------------------------
-    # _mergeGeolocatedData
-    #
-    # run -> processStrips -> runOneStrip -> stripToToa -> orthoOne
-    # --------------------------------------------------------------------------
-    def _mergeGeolocatedData(self, geolocatedPaths):
-
-        outputName = str(geolocatedPaths[0]).split(
-            '/')[-1].replace('tif', 'mosaic.tif')
-
-        outputPath = self.mosaicDir / outputName
-
-        logging.info(outputPath)
-
-        geolocatedPathsStr = ' '.join(
-            [str(geolocatedPath) for geolocatedPath in geolocatedPaths])
-
-        logging.info(geolocatedPathsStr)
-
-        cmd = f'{self.GDALMERGE} {str(outputPath)} {geolocatedPathsStr}'
-
-        SystemCommand(cmd, logger=logging)
-
-        return

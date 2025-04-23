@@ -44,37 +44,6 @@ from ..transforms.modis_toa_scale import MinMaxEmissiveScaleReflectance
 # to prepare data for display and organizes subplots for easy comparison.
 # -----------------------------------------------------------------------------
 def plot_export_pdf(path, inputs, outputs, masks, rgb_index):
-#     pdf_plot_obj = PdfPages(path)
-
-#     for idx in range(len(inputs)):
-#         # prediction processing
-#         image = inputs[idx]
-#         img_recon = outputs[idx]
-#         mask = masks[idx]
-#         rgb_image, rgb_image_masked, rgb_recon_masked, mask = \
-#             process_reconstruction_prediction(
-#                 image, img_recon, mask, rgb_index)
-
-#         # matplotlib code
-#         fig, (ax01, ax23) = plt.subplots(2, 2, figsize=(40, 30))
-#         ax0, ax1 = ax01
-#         ax2, ax3 = ax23
-#         ax2.imshow(rgb_image)
-#         ax2.set_title(f"Idx: {idx} MOD021KM v6.1 Bands: {rgb_index}")
-
-#         ax0.imshow(rgb_recon_masked)
-#         ax0.set_title(f"Idx: {idx} Model reconstruction")
-
-#         ax1.imshow(rgb_image_masked)
-#         ax1.set_title(f"Idx: {idx} MOD021KM Bands: {rgb_index}, masked")
-
-#         ax3.matshow(mask[:, :, 0])
-#         ax3.set_title(f"Idx: {idx} Reconstruction Mask")
-#         pdf_plot_obj.savefig()
-
-#     pdf_plot_obj.close()
-    
-#     inputs, outputs, masks, rgb_index, pdf_path, n_images=16, figsize=(10,8), verbose=0
     
     pdf_plot_obj = PdfPages(path)
     
@@ -123,32 +92,6 @@ def plot_export_pdf(path, inputs, outputs, masks, rgb_index):
 # -----------------------------------------------------------------------------
 def process_reconstruction_prediction(image, img_recon, mask, rgb_index):
 
-#     mask = process_mask(mask)
-
-#     red_idx = rgb_index[0]
-#     blue_idx = rgb_index[1]
-#     green_idx = rgb_index[2]
-
-#     image = reverse_transform(image.numpy())
-
-#     img_recon = reverse_transform(img_recon.numpy())
-
-#     rgb_image = np.stack((image[red_idx, :, :],
-#                           image[blue_idx, :, :],
-#                           image[green_idx, :, :]), axis=-1)
-#     rgb_image = minmax_norm(rgb_image)
-
-#     rgb_image_recon = np.stack((img_recon[red_idx, :, :],
-#                                 img_recon[blue_idx, :, :],
-#                                 img_recon[green_idx, :, :]), axis=-1)
-#     rgb_image_recon = minmax_norm(rgb_image_recon)
-
-#     rgb_masked = np.where(mask == 0, rgb_image, rgb_image_recon)
-#     rgb_image_masked = np.where(mask == 1, 0, rgb_image)
-#     rgb_recon_masked = rgb_masked
-
-#     return rgb_image, rgb_image_masked, rgb_recon_masked, mask
-
     # process mask
     mask_p = process_mask(mask)
     
@@ -171,13 +114,6 @@ def process_reconstruction_prediction(image, img_recon, mask, rgb_index):
 # -----------------------------------------------------------------------------
 # Normalizes an image array to a range of [0,1] for consistent display.
 # -----------------------------------------------------------------------------
-# def minmax_norm(img_arr):
-#     arr_min = img_arr.min()
-#     arr_max = img_arr.max()
-#     img_arr_scaled = (img_arr - arr_min) / (arr_max - arr_min)
-#     img_arr_scaled = img_arr_scaled * 255
-#     img_arr_scaled = img_arr_scaled.astype(np.uint8)
-#     return img_arr_scaled
 
 # normalization for image
 def pb_minmax_norm(img):

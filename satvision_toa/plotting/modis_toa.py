@@ -65,15 +65,15 @@ def plot_export_pdf(path, inputs, outputs, masks, rgb_index):
         fig, axes = plt.subplots(nrows=1, ncols=3, figsize=(30,20))
         
         axes[0].imshow(model_input)
-        axes[0].set_title(f"Input {i+1}", fontsize=30)
+        axes[0].set_title(f"MOD021KM v6.1 Bands: {rgb_index}, Image #{i+1}", fontsize=30)
         axes[0].axis('off')
         
         axes[1].imshow(model_output)
-        axes[1].set_title(f"Recon {i+1}", fontsize=30)
+        axes[1].set_title(f"Model reconstruction #{i+1}", fontsize=30)
         axes[1].axis('off')
         
         axes[2].matshow(model_mask[:, :, 0])
-        axes[2].set_title(f"Mask {i+1}", fontsize=30)
+        axes[2].set_title(f"Mask #{i+1}", fontsize=30)
         axes[2].axis('off')
     
         # save this figure to pdf

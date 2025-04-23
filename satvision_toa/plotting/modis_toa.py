@@ -72,7 +72,7 @@ def plot_export_pdf(path, inputs, outputs, masks, rgb_index):
         axes[1].set_title(f"Recon {i+1}", fontsize=30)
         axes[1].axis('off')
         
-        axes[2].imshow(model_mask)
+        axes[2].matshow(model_mask[:, :, 0])
         axes[2].set_title(f"Mask {i+1}", fontsize=30)
         axes[2].axis('off')
     

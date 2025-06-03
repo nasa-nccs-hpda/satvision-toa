@@ -11,10 +11,10 @@ from matplotlib import colormaps
 
 sys.path.append('satvision-toa')
 
-from threedcloud_svtoa import ABITransform
+from threedcloud_svtoa import ABITransform, reverse_transform
 
-# load ABI data into a dict for later use
 def load_abi(abi_path):
+    """Create a dict with ABI attributes used for creating chips."""
     ds = xr.open_dataset(abi_path)
     
     BOUND_SIZE = 1600
@@ -63,6 +63,7 @@ def load_abi(abi_path):
 
 
 def gather_files(YYYY, DDD, HH, ROOT):
+    """Glob-like file gathering in ROOT directory."""
     ABI_ = {
         "ROOT_PATH": None,
 
@@ -107,6 +108,7 @@ def gather_files(YYYY, DDD, HH, ROOT):
 
 
 def get_L1B_L2(abipaths, l2path, YYYY, DDD, HH, ROOT):
+    """Get Level-1B data from paths and datetime."""
     
     if len(abipaths) != 16:
         raise ImportError("This hour is bad")
@@ -148,6 +150,9 @@ def get_L1B_L2(abipaths, l2path, YYYY, DDD, HH, ROOT):
 
 
 def create_chip(abi_dict, t, yy, ddn, lat, lon, ABI_ROOT):
+    """Create a chip from given datetime and lat, lon input, 
+    from ABI data. 
+    """
     # Assert times are within min/max    
     if np.floor(t) < 12:
         raise ValueError("Times must be between 12-23")
@@ -255,3 +260,142 @@ def create_chip(abi_dict, t, yy, ddn, lat, lon, ABI_ROOT):
     chip = torch.from_numpy(chip).cuda();
     
     return chip, coords
+
+
+def generate_transect_latlon(lat, lon):
+    lat_list = generate_transect_single_coord(
+        lat, 'lat')
+    lon_list = generate_transect_single_coord(
+        lon, 'lon')
+    
+    return lat_list, lon_list
+
+
+def generate_transect_single_coord(coord, coord_type):
+    """From user lat, lon pair, generate 91 transect lat, lon pairs."""
+    coord_list = np.zeros(91)
+    coord_list[45] = coord
+    
+    DELTA_LAT = -0.009673
+    DELTA_LON = 0.002268
+    
+    if (coord_type == 'lat'):
+        delta = DELTA_LAT
+    else:
+        delta = DELTA_LON
+    
+    for i in range(45):
+        lower_val = coord - (delta * (45 - i))
+        upper_val = coord + (delta * (i + 1))
+        coord_list[i] = lower_val
+        coord_list[i+46] = upper_val
+        
+    return coord_list
+
+
+def pb_minmax_norm(img):
+    """Normalize an image using per-band min/max."""
+    normalized = np.zeros_like(img, dtype=float)
+
+    for i in range(3):
+        band = img[:,:,i]
+        min_val = band.min()
+        max_val = band.max()
+        normalized[:,:,i] = (band - min_val) / (max_val - min_val)
+
+    return normalized
+
+
+def process_chip_viz(chip):
+    """Process chip for visualization as an RGB image."""
+    
+    chip = chip.cpu().numpy().squeeze()
+
+    image = reverse_transform(chip)
+    
+    red_coi = 0.9 
+    green_coi = 0.45
+    blue_coi = 0.65
+    rgb_index = [1, 2, 0]
+
+    rgb_image = np.stack((image[rgb_index[0], :, :]*red_coi,
+                                image[rgb_index[1], :, :]*green_coi,
+                                image[rgb_index[2], :, :]*blue_coi),
+                                axis=-1)
+    rgb_image = pb_minmax_norm(rgb_image*1.1)
+    
+    return rgb_image
+
+
+def process_pred_viz(pred):
+    """Process our model prediction (cloud mask) for visualization."""
+    
+    pred_binary = (pred > 0.5).float()
+    pred_binary = pred_binary.cpu().numpy()
+    pred_binary = np.rot90(pred_binary, k=1, axes=(2, 3)).squeeze()
+    
+    return pred_binary
+
+
+def plot_rgb_chip_and_mask(chip, pred, lat, lon):
+    """Input image, model prediction to create a side-by-side visualization."""
+    
+    rgb_image = process_chip_viz(chip)
+    pred_binary = process_pred_viz(pred)
+    
+    num_predictions = 1
+    
+    fig, axes = plt.subplots(
+        num_predictions, 2, figsize=(20, 6 * num_predictions), dpi=300)
+
+    # Plot ABI input image as base layer
+    axes[0].imshow(rgb_image)
+
+    # Values to plot for transect
+    #   x_values: 100 points, transect is midway across the 128x128 chip
+    #   y_values: bottom to top of 128x128 chip, also 100 values
+    x_values = np.linspace(128/2+9, 128/2-9, 100)  
+    y_values = np.linspace(0, 128-1, 100)
+
+    # Transect colormap
+    cmap = colormaps['cool']
+    colors = cmap(np.linspace(0, 1, len(x_values)))  # Map positions along the line to the colormap
+
+    # Plot the transect with gradent color values
+    for j in range(len(x_values)-1):
+        axes[0].plot(
+            [x_values[j], x_values[j+1]], 
+            [y_values[j], y_values[j+1]], 
+            color=colors[j], lw=2)
+
+    axes[0].set_title(f'ABI image chip (channels [1, 2, 3])')
+    axes[0].axis('on')
+
+    # Plot model cloud mask prediction
+    axes[1].matshow(pred_binary, cmap='viridis')  # First channel contains the binary mask
+    axes[1].set_title(f'Predicted Mask')
+    axes[1].axis('on')
+    axes[1].invert_yaxis()
+    axes[1].set_ylabel('Altitude (km)')
+    axes[1].xaxis.set_ticks_position('bottom')
+    
+    # Get lat, lon pairs along the transect for plot legend
+    lats, lons = generate_transect_latlon(lat, lon)
+    
+    # Calculate lat, lon pairs along 9 ticks
+    num_ticks = 9
+    idx = np.linspace(0, 91 - 1, num_ticks, dtype=int)
+    idx_1 = idx[1:]
+    fa = [f"Lat {lats[0]:.2f}\nLon {lons[0]:.2f}"]
+    fa2 = np.vectorize(lambda x, y: f"{x:.2f}\n{y:.2f}")(lats[idx_1], lons[idx_1])
+    fa = fa + list(fa2)
+    
+    # Add ticks to axis
+    axes[1].set_xticks(idx)               # Set tick positions
+    axes[1].set_xticklabels(fa, fontsize=8)
+    axes[1].xaxis.set_ticks_position('bottom')  # Ensures ticks are at the bottom
+    axes[1].xaxis.set_label_position('bottom')
+
+    plt.tight_layout()
+    plt.show()
+    

@@ -1,5 +1,6 @@
 import os
 import torch
+import torch.nn as nn
 import numpy as np
 import xarray as xr
 import matplotlib.pyplot as plt
@@ -198,7 +199,7 @@ def create_chip(abi_dict, t, yy, ddn, lat, lon, ABI_ROOT):
         coords[0] += lati - AREA_SIZE
         coords[1] += loni - AREA_SIZE
 
-    # Retrieve our boundary constants from dict      
+    # Retrieve our boundary constants from dict
     BOUND_SIZE, LENGTH = abi_dict['BOUND_SIZE'], abi_dict['LENGTH']
 
     # Second bounding check for lat/lon (based on distances arr above)
@@ -234,7 +235,7 @@ def create_chip(abi_dict, t, yy, ddn, lat, lon, ABI_ROOT):
             else:
                 minutes = 45
 
-    # Process minutes string      
+    # Process minutes string
     minutes = str(minutes)
     if minutes == "0":
         minutes = "00"
@@ -395,6 +396,57 @@ def plot_rgb_chip_and_mask(chip, pred, lat, lon):
     plt.tight_layout()
     plt.show()
     return
+
+
+class FCN(nn.Module):
+    def __init__(self, swin_encoder, num_output_channels=1,
+                 freeze_encoder=False, dropout_rate=0.2):
+        super(FCN, self).__init__()
+
+        # Define the encoder part (down-sampling)
+        self.encoder = swin_encoder
+        if freeze_encoder:
+            print('Freezing encoder')
+            for param in self.encoder.parameters():
+                param.requires_grad = False
+
+        # Decoder (up-sampling) with dropout layers
+        # added after ReLU activations
+        self.decoder = nn.Sequential(
+            nn.ConvTranspose2d(4096, 2048, kernel_size=3, stride=2, padding=1,
+                               output_padding=1),  # 8x8x2048
+            nn.ReLU(),
+            # nn.Dropout(p=dropout_rate),
+            nn.ConvTranspose2d(2048, 512, kernel_size=3, stride=2, padding=1,
+                               output_padding=1),  # 16x16x512
+            nn.ReLU(),
+            # nn.Dropout(p=dropout_rate),
+            nn.ConvTranspose2d(512, 256, kernel_size=3, stride=2, padding=1,
+                               output_padding=1),  # 32x32x256
+            nn.ReLU(),
+            # nn.Dropout(p=dropout_rate),
+            nn.ConvTranspose2d(256, 128, kernel_size=3, stride=2, padding=1,
+                               output_padding=1),  # 64x64x128
+            nn.ReLU(),
+            # nn.Dropout(p=dropout_rate),
+            nn.ConvTranspose2d(128, 64, kernel_size=3, stride=2, padding=1,
+                               output_padding=1),  # 128x128x64
+            nn.ReLU(),
+            # nn.Dropout(p=dropout_rate),
+        )
+
+        self.final_layer = nn.Conv2d(64, num_output_channels, kernel_size=3,
+                                     stride=1, padding=1)  # 128x128x1
+        self.resize = nn.Upsample(size=(91, 40), mode='bilinear',
+                                  align_corners=False)
+
+    def forward(self, x):
+        x = self.encoder.extra_features(x)[-1]
+        x = self.decoder(x)
+        x = self.final_layer(x)
+        x = self.resize(x)
+
+        return x
 
 
 def load_pretrained_model(config):

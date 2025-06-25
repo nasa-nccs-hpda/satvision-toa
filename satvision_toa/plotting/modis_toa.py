@@ -78,8 +78,8 @@ def plot_export_pdf(path, inputs, outputs, masks, rgb_index):
         axes[1].set_title(
             f"Model reconstruction #{i+1}", fontsize=30)
         axes[1].axis('off')
-
-        axes[2].matshow(model_mask[:, :, 0])
+        
+        axes[2].matshow(model_mask)
         axes[2].set_title(f"Mask #{i+1}", fontsize=30)
         axes[2].axis('off')
 
@@ -134,6 +134,20 @@ def pb_minmax_norm(img):
         normalized[:, :, i] = (band - min_val) / (max_val - min_val)
 
     return normalized
+
+
+# -----------------------------------------------------------------------------
+# minmax_norm
+# -----------------------------------------------------------------------------
+# Normalizes an image array to a range of 0-255 for consistent display.
+# -----------------------------------------------------------------------------
+def minmax_norm(img_arr):
+    arr_min = img_arr.min()
+    arr_max = img_arr.max()
+    img_arr_scaled = (img_arr - arr_min) / (arr_max - arr_min)
+    img_arr_scaled = img_arr_scaled * 255
+    img_arr_scaled = img_arr_scaled.astype(np.uint8)
+    return img_arr_scaled
 
 
 # -----------------------------------------------------------------------------

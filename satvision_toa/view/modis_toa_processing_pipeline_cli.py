@@ -1,7 +1,6 @@
 import os
 import sys
 import logging
-import pathlib
 import argparse
 from datetime import datetime
 from satvision_toa.pipelines.modis_toa_processing_pipeline import \
@@ -37,7 +36,7 @@ def main():
                         '--data-regex',
                         dest='data_regex',
                         required=False,
-                        help='Regex to data paths (*.hdf) instead of text files')
+                        help='Regex to data paths (*.hdf files)')
 
     parser.add_argument('-b',
                         '--bands',

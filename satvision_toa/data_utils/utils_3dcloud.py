@@ -92,7 +92,10 @@ def gather_files(YYYY, DDD, HH, ROOT):
         "everyten": False,
     }
 
-    _ABI_PATH_ = ROOT + YYYY + "/" + DDD + "/" + HH
+    # _ABI_PATH_ = ROOT + YYYY + "/" + DDD + "/" + HH
+    _ABI_PATH_ = os.path.join(
+        ROOT, YYYY, DDD, HH
+    )
 
     # Find in folder
     for filename in os.listdir(_ABI_PATH_):
@@ -151,7 +154,7 @@ def get_L1B_L2(abipaths, l2path, YYYY, DDD, HH, ROOT):
     return ABI
 
 
-def create_chip(abi_dict, t, yy, ddn, lat, lon, ABI_ROOT):
+def create_chip(abi_dict, t, yy, ddn, lat, lon, abi_root_path):
     """Create a chip from given datetime and lat, lon input,
     from ABI data.
     Datetime (t, yy, ddn) and lat, lon must be within certain bounds.
@@ -219,7 +222,7 @@ def create_chip(abi_dict, t, yy, ddn, lat, lon, ABI_ROOT):
     hour = np.floor(t).astype(int)
 
     # Gather ABI file
-    DATA = gather_files(str(yy), str(ddn), str(hour), ABI_ROOT)
+    DATA = gather_files(str(yy), str(ddn), str(hour), abi_root_path)
 
     # Find the closest minute
     if DATA["everyten"]:
@@ -249,7 +252,7 @@ def create_chip(abi_dict, t, yy, ddn, lat, lon, ABI_ROOT):
         DATA["L200"],
         DATA["YYYY"],
         DATA["DDD"], DATA["HH"],
-        ABI_ROOT
+        abi_root_path
     )
 
     # Create 128x128 chip to return

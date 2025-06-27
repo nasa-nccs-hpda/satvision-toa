@@ -125,7 +125,10 @@ def get_L1B_L2(abipaths, l2path, YYYY, DDD, HH, ROOT):
 
     for file in abipaths:
         ds = xr.open_dataset(
-            (ROOT + "/" + YYYY + "/" + DDD + "/" + HH + "/" + file))
+            os.path.join(
+                ROOT, YYYY, DDD, HH, file
+            )
+        )
         L1B = ds["Rad"].to_numpy()
         CHANNEL = int(file[19:21])
         CHANNELS.append((L1B, CHANNEL))

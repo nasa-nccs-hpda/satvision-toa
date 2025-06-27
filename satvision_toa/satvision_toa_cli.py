@@ -70,7 +70,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
-        '--config-path', type=str, help='Path to pretrained model config'
+        '--config-path',
+        type=str,
+        help='Path to pretrained model config'
     )
 
     hparams = parser.parse_args()
@@ -78,12 +80,15 @@ if __name__ == "__main__":
     config = _C.clone()
     _update_config_from_file(config, hparams.config_path)
 
-    output_dir = os.path.join(config.OUTPUT, config.MODEL.NAME, config.TAG)
+    output_dir = os.path.join(
+        config.OUTPUT, config.MODEL.NAME, config.TAG)
     logging.info(f'Output directory: {output_dir}')
     os.makedirs(output_dir, exist_ok=True)
 
-    path = os.path.join(output_dir,
-                        f"{config.TAG}.config.json")
+    path = os.path.join(
+        output_dir,
+        f"{config.TAG}.config.json"
+    )
 
     with open(path, "w") as f:
         f.write(config.dump())

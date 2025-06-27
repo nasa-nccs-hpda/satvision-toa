@@ -1,9 +1,13 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from timm.models.layers import trunc_normal_
 
-from .encoders.swinv2 import SwinTransformerV2
+try:
+    from timm.layers import trunc_normal_
+except ImportError:
+    from timm.models.layers import trunc_normal_
+
+from satvision_toa.models.encoders.swinv2 import SwinTransformerV2
 
 
 # -----------------------------------------------------------------------------

@@ -1,11 +1,14 @@
 import os
 import torch
+import torch.nn as nn
 import numpy as np
 import xarray as xr
 import matplotlib.pyplot as plt
 
+from huggingface_hub import hf_hub_download
+from satvision_toa.configs.config import _C, _update_config_from_file
+
 from matplotlib import colormaps
-from satvision_toa.models.build import build_model
 from satvision_toa.plotting.abi import pb_minmax_norm
 from satvision_toa.plotting.abi import reverse_transform
 from satvision_toa.transforms.abi_toa \
@@ -151,6 +154,7 @@ def get_L1B_L2(abipaths, l2path, YYYY, DDD, HH, ROOT):
 def create_chip(abi_dict, t, yy, ddn, lat, lon, ABI_ROOT):
     """Create a chip from given datetime and lat, lon input,
     from ABI data.
+    Datetime (t, yy, ddn) and lat, lon must be within certain bounds.
     """
     # Assert times are within min/max
     if np.floor(t) < 12:
@@ -198,7 +202,7 @@ def create_chip(abi_dict, t, yy, ddn, lat, lon, ABI_ROOT):
         coords[0] += lati - AREA_SIZE
         coords[1] += loni - AREA_SIZE
 
-    # Retrieve our boundary constants from dict      
+    # Retrieve our boundary constants from dict
     BOUND_SIZE, LENGTH = abi_dict['BOUND_SIZE'], abi_dict['LENGTH']
 
     # Second bounding check for lat/lon (based on distances arr above)
@@ -234,7 +238,7 @@ def create_chip(abi_dict, t, yy, ddn, lat, lon, ABI_ROOT):
             else:
                 minutes = 45
 
-    # Process minutes string      
+    # Process minutes string
     minutes = str(minutes)
     if minutes == "0":
         minutes = "00"
@@ -262,15 +266,27 @@ def create_chip(abi_dict, t, yy, ddn, lat, lon, ABI_ROOT):
     # Chip needs to be a tensor on cuda device for model inference
     chip = torch.from_numpy(chip).cuda()
 
-    return chip, coords
+    return chip
 
 
-def generate_transect_latlon(lat, lon):
+def get_viz_transect(lat, lon):
+    """Creates a list of lat, lon pairs used in the chip's transect.
+
+        Args:
+            lat: user-inputted centroid lat value
+            lon: user-inputted centroid lon value
+
+        Returns:
+            lat_list: list of lats used in transect while creating chip
+            lon_list: list of lons used in transect while creating chip
+            indices: 90 indices corresponding to length of lat/lon lists
+    """
     lat_list = generate_transect_single_coord(
         lat, 'lat')
     lon_list = generate_transect_single_coord(
         lon, 'lon')
-    return lat_list, lon_list
+    indices = np.linspace(0, 90, 9, dtype=int)
+    return lat_list, lon_list, indices
 
 
 def generate_transect_single_coord(coord, coord_type):
@@ -374,21 +390,18 @@ def plot_rgb_chip_and_mask(chip, pred, lat, lon):
     axes[1].set_ylabel('Altitude (km)')
     axes[1].xaxis.set_ticks_position('bottom')
 
-    # Get lat, lon pairs along the transect for plot legend
-    lats, lons = generate_transect_latlon(lat, lon)
+    # Get lat, lon pairs & indices along the transect for plot legend
+    lats, lons, indices = get_viz_transect(lat, lon)
 
     # Calculate lat, lon pairs along 9 ticks
-    num_ticks = 9
-    idx = np.linspace(0, 91 - 1, num_ticks, dtype=int)
-    idx_1 = idx[1:]
-    fa = [f"Lat {lats[0]:.2f}\nLon {lons[0]:.2f}"]
-    fa2 = np.vectorize(
-        lambda x, y: f"{x:.2f}\n{y:.2f}")(lats[idx_1], lons[idx_1])
-    fa = fa + list(fa2)
+    axis_label_start = [f"Lat {lats[0]:.2f}\nLon {lons[0]:.2f}"]
+    axis_label_end = np.vectorize(
+        lambda x, y: f"{x:.2f}\n{y:.2f}")(lats[indices[1:]], lons[indices[1:]])
+    axis_label = axis_label_start + list(axis_label_end)
 
     # Add ticks to axis
-    axes[1].set_xticks(idx)  # Set tick positions
-    axes[1].set_xticklabels(fa, fontsize=8)
+    axes[1].set_xticks(indices)  # Set tick positions
+    axes[1].set_xticklabels(axis_label, fontsize=8)
     axes[1].xaxis.set_ticks_position('bottom')
     axes[1].xaxis.set_label_position('bottom')
 
@@ -397,8 +410,86 @@ def plot_rgb_chip_and_mask(chip, pred, lat, lon):
     return
 
 
-def load_pretrained_model(config):
-    checkpoint = torch.load(config.MODEL.RESUME)
-    pretrained_model = build_model(config, pretrain=True)
-    pretrained_model.load_state_dict(checkpoint['module'])
-    return pretrained_model
+class FCN(nn.Module):
+    
+    def __init__(self, swin_encoder, num_output_channels=1,
+                 freeze_encoder=False, dropout_rate=0.2):
+        super(FCN, self).__init__()
+
+        # Define the encoder part (down-sampling)
+        self.encoder = swin_encoder
+        if freeze_encoder:
+            print('Freezing encoder')
+            for param in self.encoder.parameters():
+                param.requires_grad = False
+
+        # Decoder (up-sampling) with dropout layers
+        # added after ReLU activations
+        self.decoder = nn.Sequential(
+            nn.ConvTranspose2d(4096, 2048, kernel_size=3, stride=2, padding=1,
+                               output_padding=1),  # 8x8x2048
+            nn.ReLU(),
+            # nn.Dropout(p=dropout_rate),
+            nn.ConvTranspose2d(2048, 512, kernel_size=3, stride=2, padding=1,
+                               output_padding=1),  # 16x16x512
+            nn.ReLU(),
+            # nn.Dropout(p=dropout_rate),
+            nn.ConvTranspose2d(512, 256, kernel_size=3, stride=2, padding=1,
+                               output_padding=1),  # 32x32x256
+            nn.ReLU(),
+            # nn.Dropout(p=dropout_rate),
+            nn.ConvTranspose2d(256, 128, kernel_size=3, stride=2, padding=1,
+                               output_padding=1),  # 64x64x128
+            nn.ReLU(),
+            # nn.Dropout(p=dropout_rate),
+            nn.ConvTranspose2d(128, 64, kernel_size=3, stride=2, padding=1,
+                               output_padding=1),  # 128x128x64
+            nn.ReLU(),
+            # nn.Dropout(p=dropout_rate),
+        )
+
+        self.final_layer = nn.Conv2d(64, num_output_channels, kernel_size=3,
+                                     stride=1, padding=1)  # 128x128x1
+        self.resize = nn.Upsample(size=(91, 40), mode='bilinear',
+                                  align_corners=False)
+
+    def forward(self, x):
+        x = self.encoder.extra_features(x)[-1]
+        x = self.decoder(x)
+        x = self.final_layer(x)
+        x = self.resize(x)
+
+        return x
+
+
+def load_config():
+    """
+        Loads the mim-model config for SatVision from HF.
+
+        Returns:
+            config: reference to config file that can be used to load the model
+    """
+
+    # directories/URLs
+    cloud_model_repo_id = ('nasa-cisto-data-science-group/' 
+                           'downstream-satvision-toa-3dclouds')
+    cloud_config_filename = ('mim_pretrain_swinv2_satvision_giant'
+                             '_128_window08_50ep.yaml')
+    cloud_model_filename = 'mp_rank_00_model_states.pt'
+
+    # Extract filenames from HF to be used later
+    config_filename = hf_hub_download(
+        repo_id=cloud_model_repo_id,
+        filename=cloud_config_filename)
+    ckpt_model_filename = hf_hub_download(  # CHANGE
+        repo_id=cloud_model_repo_id, 
+        filename=cloud_model_filename)
+
+    # edit config so we can load mim model from it
+    config = _C.clone()
+    _update_config_from_file(config, config_filename)
+    config.defrost()
+    config.MODEL.RESUME = ckpt_model_filename
+    config.freeze()
+
+    return config

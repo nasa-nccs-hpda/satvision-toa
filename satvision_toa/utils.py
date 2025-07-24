@@ -1,6 +1,8 @@
 import argparse
 from datetime import datetime
+from huggingface_hub import hf_hub_download
 from lightning.pytorch.strategies import DeepSpeedStrategy
+from satvision_toa.configs.config import _C, _update_config_from_file
 
 
 # -----------------------------------------------------------------------------
@@ -56,3 +58,38 @@ def valid_date(s):
     except ValueError:
         msg = "not a valid date: {0!r}".format(s)
         raise argparse.ArgumentTypeError(msg)
+
+
+# -------------------------------------------------------------------------
+# load_config
+# -------------------------------------------------------------------------
+def load_config(
+            model_repo_id: str = ('nasa-cisto-data-science-group/' 
+                           'satvision-toa-giant-patch8-window8-128'),
+            config_filename: str = ('mim_pretrain_swinv2_satvision_giant'
+                             '_128_window08_50ep.yaml'),
+            model_filename: str = 'mp_rank_00_model_states.pt'
+        ):
+    """
+        Loads the mim-model config for SatVision from HF.
+
+        Returns:
+            config: reference to config file that can be used to load the model
+    """
+
+    # Extract filenames from HF to be used later
+    config_filename = hf_hub_download(
+        repo_id=model_repo_id,
+        filename=config_filename)
+    ckpt_model_filename = hf_hub_download(  # CHANGE
+        repo_id=model_repo_id, 
+        filename=model_filename)
+
+    # edit config so we can load mim model from it
+    config = _C.clone()
+    _update_config_from_file(config, config_filename)
+    config.defrost()
+    config.MODEL.RESUME = ckpt_model_filename
+    config.freeze()
+
+    return config

@@ -115,6 +115,8 @@ RUN pip --no-cache-dir install \
     h5py
     # git+https://github.com/nasa-nccs-hpda/satvision-toa.git@main
 
+RUN pip install "numpy<2"
+
 HEALTHCHECK NONE
 ENTRYPOINT []
 CMD ["/bin/bash"]

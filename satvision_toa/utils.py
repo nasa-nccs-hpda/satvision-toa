@@ -64,10 +64,12 @@ def valid_date(s):
 # load_config
 # -------------------------------------------------------------------------
 def load_config(
-            model_repo_id: str = ('nasa-cisto-data-science-group/' 
-                           'satvision-toa-giant-patch8-window8-128'),
-            config_filename: str = ('mim_pretrain_swinv2_satvision_giant'
-                             '_128_window08_50ep.yaml'),
+            model_repo_id: str = (
+                'nasa-cisto-data-science-group/'
+                'satvision-toa-giant-patch8-window8-128'),
+            config_filename: str = (
+                'mim_pretrain_swinv2_satvision_giant'
+                '_128_window08_50ep.yaml'),
             model_filename: str = 'mp_rank_00_model_states.pt'
         ):
     """
@@ -82,7 +84,7 @@ def load_config(
         repo_id=model_repo_id,
         filename=config_filename)
     ckpt_model_filename = hf_hub_download(  # CHANGE
-        repo_id=model_repo_id, 
+        repo_id=model_repo_id,
         filename=model_filename)
 
     # edit config so we can load mim model from it

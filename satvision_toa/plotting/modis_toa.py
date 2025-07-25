@@ -32,7 +32,7 @@ from ..transforms.modis_toa_scale import MinMaxEmissiveScaleReflectance
 #               ├── reverse_transform
 #               ├── pb_minmax_norm
 #               ├── stack
-# 
+#
 # -----------------------------------------------------------------------------
 
 # -----------------------------------------------------------------------------
@@ -43,7 +43,8 @@ from ..transforms.modis_toa_scale import MinMaxEmissiveScaleReflectance
 # to prepare data for display and organizes subplots for easy comparison.
 # -----------------------------------------------------------------------------
 def plot_export_pdf(path, inputs, outputs, masks, rgb_index, save_to_pdf=True):
-    if(save_to_pdf):
+
+    if save_to_pdf:
         pdf_plot_obj = PdfPages(path)
 
     # clone model tensors to prevent mutation
@@ -83,13 +84,14 @@ def plot_export_pdf(path, inputs, outputs, masks, rgb_index, save_to_pdf=True):
         axes[2].axis('off')
 
         plt.tight_layout()
-        
+
         # save this figure to pdf
         if (save_to_pdf):
             pdf_plot_obj.savefig()
 
     if (save_to_pdf):
         pdf_plot_obj.close()
+
 
 # -----------------------------------------------------------------------------
 # process_reconstruction_prediction
@@ -107,7 +109,7 @@ def process_recon_pred(image, recon, mask, rgb_index):
     image = image.numpy()
     recon = recon.numpy()
 
-    # stack bands properly, normalize 
+    # stack bands properly, normalize
     image_p = process_img(image, rgb_index)
     recon_processed = process_img(recon, rgb_index)
 
@@ -115,6 +117,7 @@ def process_recon_pred(image, recon, mask, rgb_index):
     recon_masked = np.where(mask_p == 0, image_p, recon_processed)
 
     return image_p, recon_masked, mask_p
+
 
 # -----------------------------------------------------------------------------
 # pb_minmax_norm
@@ -126,12 +129,13 @@ def pb_minmax_norm(img):
     normalized = np.zeros_like(img, dtype=float)
 
     for i in range(3):
-        band = img[:,:,i]
+        band = img[:, :, i]
         min_val = band.min()
         max_val = band.max()
-        normalized[:,:,i] = (band - min_val) / (max_val - min_val)
+        normalized[:, :, i] = (band - min_val) / (max_val - min_val)
 
     return normalized
+
 
 # -----------------------------------------------------------------------------
 # process_img
@@ -144,6 +148,7 @@ def process_img(img, rgb_index):
     transformed = reverse_transform(img)
     stacked = stack(transformed, rgb_index)
     return pb_minmax_norm(stacked)
+
 
 # -----------------------------------------------------------------------------
 # stack
@@ -160,6 +165,7 @@ def stack(img, rgb_index):
                      img[green_idx, :, :],
                      img[blue_idx, :, :]), axis=-1)
 
+
 # -----------------------------------------------------------------------------
 # process_mask
 # -----------------------------------------------------------------------------
@@ -172,6 +178,7 @@ def process_mask(mask):
     mask_img = mask_img.repeat_interleave(4, 1).repeat_interleave(4, 2)
     mask_img = mask_img.unsqueeze(1).contiguous()[0, 0]
     return np.stack([mask_img] * 3, axis=-1)
+
 
 # -----------------------------------------------------------------------------
 # reverse_transform

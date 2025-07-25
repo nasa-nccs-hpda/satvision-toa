@@ -177,17 +177,17 @@ def create_chip(abi_dict, t, yy, ddn, lat, lon, abi_root_path):
     # Search 1000x1000 area for best chip
     AREA_SIZE = 1000
 
-    # Retrieve our slice of ABI data from dict   
+    # Retrieve our slice of ABI data from dict
     latSlice, longSlice = abi_dict['latSlice'], abi_dict['longSlice']
 
     # Indices of lat/lon pair in ABI data
     lati = len(latSlice) - np.searchsorted(latSlice, lat) + 17
     loni = np.searchsorted(longSlice, lon) + 18
 
-    # Retrieve ABI lat/lon values array  
+    # Retrieve ABI lat/lon values array
     abiLat, abiLong = abi_dict['abiLat'], abi_dict['abiLong']
 
-    # Calculate distance from ABI lat/lon vals from input 
+    # Calculate distance from ABI lat/lon vals from input
     distances = np.abs(
             abiLat[lati-AREA_SIZE:lati+AREA_SIZE,
                    loni-AREA_SIZE:loni+AREA_SIZE] - lat) + np.abs(
@@ -380,8 +380,8 @@ def plot_rgb_chip_and_mask(chip, pred, lat, lon):
     # Plot the transect with gradent color values
     for j in range(len(x_values)-1):
         axes[0].plot(
-            [x_values[j], x_values[j+1]], 
-            [y_values[j], y_values[j+1]], 
+            [x_values[j], x_values[j+1]],
+            [y_values[j], y_values[j+1]],
             color=colors[j], lw=2)
 
     axes[0].set_title('ABI image chip (channels [1, 2, 3])')
@@ -417,7 +417,7 @@ def plot_rgb_chip_and_mask(chip, pred, lat, lon):
 
 
 class FCN(nn.Module):
-    
+
     def __init__(self, swin_encoder, num_output_channels=1,
                  freeze_encoder=False, dropout_rate=0.2):
         super(FCN, self).__init__()
@@ -477,10 +477,12 @@ def load_config():
     """
 
     # directories/URLs
-    cloud_model_repo_id = ('nasa-cisto-data-science-group/' 
-                           'downstream-satvision-toa-3dclouds')
-    cloud_config_filename = ('mim_pretrain_swinv2_satvision_giant'
-                             '_128_window08_50ep.yaml')
+    cloud_model_repo_id = (
+        'nasa-cisto-data-science-group/'
+        'downstream-satvision-toa-3dclouds')
+    cloud_config_filename = (
+        'mim_pretrain_swinv2_satvision_giant'
+        '_128_window08_50ep.yaml')
     cloud_model_filename = 'mp_rank_00_model_states.pt'
 
     # Extract filenames from HF to be used later
@@ -488,7 +490,7 @@ def load_config():
         repo_id=cloud_model_repo_id,
         filename=cloud_config_filename)
     ckpt_model_filename = hf_hub_download(  # CHANGE
-        repo_id=cloud_model_repo_id, 
+        repo_id=cloud_model_repo_id,
         filename=cloud_model_filename)
 
     # edit config so we can load mim model from it

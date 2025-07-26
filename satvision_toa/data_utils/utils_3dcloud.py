@@ -166,7 +166,7 @@ def create_chip(abi_dict, t, yy, ddn, lat, lon, abi_root_path):
     if np.floor(t) < 12:
         raise ValueError("Times must be between 12-23")
 
-    # Assert given lat/lon pair is within min/max    
+    # Assert given lat/lon pair is within min/max
     latMin, latMax = abi_dict['latMin'], abi_dict['latMax']
     longMin, longMax = abi_dict['longMin'], abi_dict['longMax']
 

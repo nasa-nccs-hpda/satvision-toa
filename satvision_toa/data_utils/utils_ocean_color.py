@@ -77,16 +77,13 @@ def gather_datasets(
     )
 
     sample = full_dataset[0]
+
     # If your dataset returns a tuple (data, label)
     if isinstance(sample, tuple):
         data, label = sample
+        shape_info = label.shape if hasattr(label, 'shape') else type(label)
         print(f"Data shape: {data.shape}")
-        print(
-            f"Label shape: {
-                label.shape
-                if hasattr(label, 'shape')
-                else type(label)}"
-        )
+        print(f"Label shape: {shape_info}")
     else:
         print(f"Sample shape: {sample.shape}")
 
@@ -208,12 +205,8 @@ def train_model(
     logger = MetricsLogger(metrics_filename)
 
     print(f"Starting training for {num_epochs} epochs on {device}")
-    print(
-        f"Model parameters: {
-            sum(p.numel()
-                for p in model.parameters()
-                if p.requires_grad):,}"
-    )
+    num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    print(f"Model parameters: {num_params:,}")
 
     # Main epoch progress bar
     epoch_pbar = tqdm(range(num_epochs), desc="Training Progress")

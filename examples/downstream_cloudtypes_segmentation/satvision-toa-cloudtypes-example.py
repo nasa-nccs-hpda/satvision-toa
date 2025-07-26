@@ -8,7 +8,14 @@ import lightning as pl
 from huggingface_hub import snapshot_download
 from torch.utils.data import Dataset, DataLoader
 
-sys.path.append('/explore/nobackup/people/jacaraba/development/satvision-toa')
+repo_dir = "satvision-toa"
+
+if not os.path.exists(repo_dir):
+    subprocess.run(["git", "clone", "https://github.com/nasa-nccs-hpda/satvision-toa"])
+else:
+    subprocess.run(["git", "-C", repo_dir, "pull"])
+
+sys.path.append('satvision-toa')
 from satvision_toa.utils import load_config
 from satvision_toa.models.mim import build_mim_model
 

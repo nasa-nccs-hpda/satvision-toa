@@ -5,6 +5,7 @@ __pycache__/
 
 # Additions
 satvision-toa/
+lightning_logs/
 
 # C extensions
 *.so

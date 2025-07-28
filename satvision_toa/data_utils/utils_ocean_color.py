@@ -1,28 +1,28 @@
 import os
 import time
 import pandas as pd
-import albumentations as A
 import matplotlib.pyplot as plt
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
+from torchvision import transforms
+# from torchmetrics import structural_similarity_index_measure as ssim
+# from torchmetrics import peak_signal_noise_ratio as psnr
 
 from tqdm import tqdm
 from datetime import datetime
-from metrics_logger import MetricsLogger
+
 from huggingface_hub import hf_hub_download
-from albumentations.pytorch import ToTensorV2
 from matplotlib.backends.backend_pdf import PdfPages
 from torch.utils.data import DataLoader, ConcatDataset, Subset, random_split
-from torchmetrics.functional import structural_similarity_index_measure as ssim
-from torchmetrics.functional.image import peak_signal_noise_ratio as psnr
 
 from satvision_toa.configs.config import _C, _update_config_from_file
 from satvision_toa.datasets.ocean_color_dataset import OceanColorDataset
 from satvision_toa.losses.spectral_spatial_loss import SpectralSpatialLoss
-from satvision_toa.transforms.ocean_color import PBMinMaxNorm, get_augments
+from satvision_toa.transforms.ocean_color import PBMinMaxNorm, RandomFlipChoice
+from satvision_toa.data_utils.ocean_color_metrics_logger import MetricsLogger
 
 
 def load_config():
@@ -76,17 +76,6 @@ def gather_datasets(
         num_inputs=num_inputs,
     )
 
-    sample = full_dataset[0]
-
-    # If your dataset returns a tuple (data, label)
-    if isinstance(sample, tuple):
-        data, label = sample
-        shape_info = label.shape if hasattr(label, 'shape') else type(label)
-        print(f"Data shape: {data.shape}")
-        print(f"Label shape: {shape_info}")
-    else:
-        print(f"Sample shape: {sample.shape}")
-
     # Find indices to split the dataset
     train_size = int(0.8 * len(full_dataset))
     val_size = len(full_dataset) - train_size
@@ -99,9 +88,13 @@ def gather_datasets(
     # trainset = Subset(full_dataset, train_indices.indices)
     trainset_plain = Subset(full_dataset, train_indices.indices)
     if (augment):
+        augment_transform = transforms.Compose([
+            PBMinMaxNorm(),
+            RandomFlipChoice(p=1.0)
+        ])
         augmented = OceanColorDataset(
             data_path=train_data_path,
-            transform=get_augments(),
+            transform=augment_transform,
             num_inputs=num_inputs,
         )
         trainset = ConcatDataset([trainset_plain, augmented])
@@ -126,7 +119,7 @@ def get_dataloaders(
             num_inputs=14,
             batch_size=32
         ):
-    transform = A.Compose([PBMinMaxNorm(p=1.0), ToTensorV2()])
+    transform = transforms.Compose([PBMinMaxNorm()])
 
     trainset, validset, testset = gather_datasets(
         train_data_path, test_data_path, transform,
@@ -426,7 +419,8 @@ def test_model_comprehensive(
     all_individual_metrics = []
 
     # Metrics storage for epoch-level aggregation
-    epoch_metrics = {'r2': [], 'rmse': [], 'ssim': [], 'psnr': []}
+    # epoch_metrics = {'r2': [], 'rmse': [], 'ssim': [], 'psnr': []}
+    epoch_metrics = {'r2': [], 'rmse': []}
 
     print("Starting testing...")
     with torch.no_grad():
@@ -456,7 +450,7 @@ def test_model_comprehensive(
             # Extract metrics and create results
             batch_metrics = {
                 metric: [data[metric] for data, _ in sample_data]
-                for metric in ['r2', 'rmse', 'ssim', 'psnr']
+                for metric in epoch_metrics.keys()
             }
 
             individual_metrics = [
@@ -513,8 +507,8 @@ def _calculate_sample_metrics(y_true, y_pred):
     return {
         'r2': r2,
         'rmse': torch.sqrt(F.mse_loss(y_hat_flat, y_flat)),
-        'ssim': ssim(y_pred, y_true, data_range=1.0),
-        'psnr': psnr(y_pred, y_true)
+        # 'ssim': ssim(y_pred, y_true, data_range=1.0),
+        # 'psnr': psnr(y_pred, y_true)
     }
 
 

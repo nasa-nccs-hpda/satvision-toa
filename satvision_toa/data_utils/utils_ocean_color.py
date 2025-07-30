@@ -2,6 +2,7 @@ import os
 import time
 import pandas as pd
 import matplotlib.pyplot as plt
+import numpy as np
 
 import torch
 import torch.nn as nn
@@ -79,7 +80,6 @@ def gather_datasets(
     # Find indices to split the dataset
     train_size = int(0.8 * len(full_dataset))
     val_size = len(full_dataset) - train_size
-    print(f"train & val size: {train_size, val_size}")
     train_indices, val_indices = random_split(
         range(len(full_dataset)), [train_size, val_size]
     )
@@ -341,8 +341,6 @@ def train_model(
     print('\nTraining completed!')
     print(f'Best validation loss: {best_val_loss:.6f}')
 
-    # print(f'Saving test results to csv.')
-    # _save_metrics_to_csv(all_test_results, metrics_filename)
     logger.close()
 
     return train_losses, val_losses
@@ -471,12 +469,12 @@ def test_model_comprehensive(
                         if torch.is_tensor(v)
                         else v for v in values
                     ])
-
-    # Save individual results to CSV
-    # _save_individual_metrics_to_csv(all_individual_metrics)
-
-    # Calculate and print epoch-level metrics
-    # _print_epoch_metrics(epoch_metrics)
+            avg_epoch_metrics = {}
+            for metric_name, values in epoch_metrics.items():
+                # Convert any remaining tensors to Python numbers and calculate mean
+                avg_epoch_metrics[metric_name] = np.mean([
+                    v.item() if torch.is_tensor(v) else v for v in values
+                ])
 
     # Concatenate all predictions and targets
     all_predictions = torch.cat(test_predictions, dim=0)
@@ -489,7 +487,7 @@ def test_model_comprehensive(
         'epoch': epoch,
         'predictions': all_predictions,
         'targets': all_targets,
-        'epoch_metrics': epoch_metrics,
+        'epoch_metrics': avg_epoch_metrics,
         'individual_metrics': all_individual_metrics
     }
 
@@ -529,41 +527,6 @@ def _create_individual_result(metrics, batch_idx, sample_idx, batch_size):
             else v for k, v in metrics.items()
         }
     }
-
-
-def _save_metrics_to_csv(metrics_list, base_filename):
-    # Extract epoch metrics from all dictionaries
-    epoch_metrics_list = []
-    individual_metrics_list = []
-
-    for metrics in metrics_list:
-        # Add epoch number to the metrics for reference
-        epoch_num = metrics.get('epoch', None)
-
-        # Extract and flatten epoch_metrics
-        if 'epoch_metrics' in metrics:
-            epoch_row = {'epoch': epoch_num}
-            epoch_row.update(metrics['epoch_metrics'])
-            epoch_metrics_list.append(epoch_row)
-
-        # Extract and flatten individual_metrics
-        if 'individual_metrics' in metrics:
-            individual_row = {'epoch': epoch_num}
-            individual_row.update(metrics['individual_metrics'])
-            individual_metrics_list.append(individual_row)
-
-    # Convert to DataFrames and save to CSV
-    if epoch_metrics_list:
-        epoch_df = pd.DataFrame(epoch_metrics_list)
-        epoch_filename = f"{base_filename}_epoch_metrics.csv"
-        epoch_df.to_csv(epoch_filename, index=False)
-        print(f"Epoch metrics saved to: {epoch_filename}")
-
-    if individual_metrics_list:
-        individual_df = pd.DataFrame(individual_metrics_list)
-        individual_filename = f"{base_filename}_individual_metrics.csv"
-        individual_df.to_csv(individual_filename, index=False)
-        print(f"Individual metrics saved to: {individual_filename}")
 
 
 def _print_epoch_metrics(epoch_metrics):

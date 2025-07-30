@@ -3,7 +3,7 @@ import os
 
 class MetricsLogger:
     def __init__(self, base_filename):
-        self.epoch_file = f"{base_filename}_epoch_metrics.csv"
+        self.epoch_file = f"{base_filename}_epoch_avg_metrics.csv"
         self.individual_file = f"{base_filename}_individual_metrics.csv"
         self.epoch_writer = None
         self.individual_writer = None

@@ -8,8 +8,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torchvision import transforms
-# from torchmetrics import structural_similarity_index_measure as ssim
-# from torchmetrics import peak_signal_noise_ratio as psnr
+from torchmetrics.image import StructuralSimilarityIndexMeasure
+from torchmetrics.image import PeakSignalNoiseRatio
 
 from tqdm import tqdm
 from datetime import datetime
@@ -296,16 +296,19 @@ def train_model(
         avg_val_mae = val_mae_accum / val_batches
         val_losses.append(avg_val_loss)
 
+        if (avg_val_loss < best_val_loss):
+            best_val_loss = avg_val_loss
+
         # Learning rate step
         scheduler.step()
 
         # TESTING
-        test_results = test_model_comprehensive(
-            model, test_dataloader, epoch+1, pdf_path)
-        epoch_metrics = test_results['epoch_metrics']
-        individual_metrics = test_results['individual_metrics']
-        logger.log_epoch_metrics(epoch_metrics, individual_metrics, epoch)
-        # all_test_results.append(test_results)
+        if (epoch + 1) % test_every == 0:
+            test_results = test_model_comprehensive(
+                model, test_dataloader, epoch+1, pdf_path)
+            epoch_metrics = test_results['epoch_metrics']
+            individual_metrics = test_results['individual_metrics']
+            logger.log_epoch_metrics(epoch_metrics, individual_metrics, epoch)
 
         # Calculate epoch time
         epoch_time = time.time() - epoch_start_time
@@ -419,8 +422,7 @@ def test_model_comprehensive(
     all_individual_metrics = []
 
     # Metrics storage for epoch-level aggregation
-    # epoch_metrics = {'r2': [], 'rmse': [], 'ssim': [], 'psnr': []}
-    epoch_metrics = {'r2': [], 'rmse': []}
+    epoch_metrics = {'r2': [], 'rmse': [], 'ssim': [], 'psnr': []}
 
     print("Starting testing...")
     with torch.no_grad():
@@ -504,11 +506,14 @@ def _calculate_sample_metrics(y_true, y_pred):
     ss_tot = torch.sum((y_flat - torch.mean(y_flat)) ** 2)
     r2 = 1 - (ss_res / ss_tot)
 
+    psnr = PeakSignalNoiseRatio(data_range=1.0).to(y_pred.device)
+    ssim = StructuralSimilarityIndexMeasure(data_range=1.0).to(y_pred.device)
+
     return {
         'r2': r2,
         'rmse': torch.sqrt(F.mse_loss(y_hat_flat, y_flat)),
-        # 'ssim': ssim(y_pred, y_true, data_range=1.0),
-        # 'psnr': psnr(y_pred, y_true)
+        'ssim': ssim(y_pred, y_true),
+        'psnr': psnr(y_pred, y_true),
     }
 
 

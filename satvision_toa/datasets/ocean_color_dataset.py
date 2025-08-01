@@ -37,10 +37,10 @@ class OceanColorDataset(Dataset):
 
         # apply transform
         if self.transform is not None:
-            sample = np.transpose(sample, (1, 2, 0))
-            sample = self.transform(image=sample)["image"]
+            sample = self.transform(sample)
 
         # extract inputs and target(s)
+        sample = torch.from_numpy(sample)
         inputs = sample[:self.num_inputs]
         target = sample[
             self.num_inputs:self.num_inputs + self.num_targets]

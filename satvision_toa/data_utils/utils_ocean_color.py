@@ -1,28 +1,29 @@
 import os
 import time
 import pandas as pd
-import albumentations as A
 import matplotlib.pyplot as plt
+import numpy as np
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
+from torchvision import transforms
+from torchmetrics.image import StructuralSimilarityIndexMeasure
+from torchmetrics.image import PeakSignalNoiseRatio
 
 from tqdm import tqdm
 from datetime import datetime
-from metrics_logger import MetricsLogger
+
 from huggingface_hub import hf_hub_download
-from albumentations.pytorch import ToTensorV2
 from matplotlib.backends.backend_pdf import PdfPages
 from torch.utils.data import DataLoader, ConcatDataset, Subset, random_split
-from torchmetrics.functional import structural_similarity_index_measure as ssim
-from torchmetrics.functional.image import peak_signal_noise_ratio as psnr
 
 from satvision_toa.configs.config import _C, _update_config_from_file
 from satvision_toa.datasets.ocean_color_dataset import OceanColorDataset
 from satvision_toa.losses.spectral_spatial_loss import SpectralSpatialLoss
-from satvision_toa.transforms.ocean_color import PBMinMaxNorm, get_augments
+from satvision_toa.transforms.ocean_color import PBMinMaxNorm, RandomFlipChoice
+from satvision_toa.data_utils.ocean_color_metrics_logger import MetricsLogger
 
 
 def load_config():
@@ -76,21 +77,9 @@ def gather_datasets(
         num_inputs=num_inputs,
     )
 
-    sample = full_dataset[0]
-
-    # If your dataset returns a tuple (data, label)
-    if isinstance(sample, tuple):
-        data, label = sample
-        shape_info = label.shape if hasattr(label, 'shape') else type(label)
-        print(f"Data shape: {data.shape}")
-        print(f"Label shape: {shape_info}")
-    else:
-        print(f"Sample shape: {sample.shape}")
-
     # Find indices to split the dataset
     train_size = int(0.8 * len(full_dataset))
     val_size = len(full_dataset) - train_size
-    print(f"train & val size: {train_size, val_size}")
     train_indices, val_indices = random_split(
         range(len(full_dataset)), [train_size, val_size]
     )
@@ -99,9 +88,13 @@ def gather_datasets(
     # trainset = Subset(full_dataset, train_indices.indices)
     trainset_plain = Subset(full_dataset, train_indices.indices)
     if (augment):
+        augment_transform = transforms.Compose([
+            PBMinMaxNorm(),
+            RandomFlipChoice(p=1.0)
+        ])
         augmented = OceanColorDataset(
             data_path=train_data_path,
-            transform=get_augments(),
+            transform=augment_transform,
             num_inputs=num_inputs,
         )
         trainset = ConcatDataset([trainset_plain, augmented])
@@ -126,7 +119,7 @@ def get_dataloaders(
             num_inputs=14,
             batch_size=32
         ):
-    transform = A.Compose([PBMinMaxNorm(p=1.0), ToTensorV2()])
+    transform = transforms.Compose([PBMinMaxNorm()])
 
     trainset, validset, testset = gather_datasets(
         train_data_path, test_data_path, transform,
@@ -303,16 +296,19 @@ def train_model(
         avg_val_mae = val_mae_accum / val_batches
         val_losses.append(avg_val_loss)
 
+        if (avg_val_loss < best_val_loss):
+            best_val_loss = avg_val_loss
+
         # Learning rate step
         scheduler.step()
 
         # TESTING
-        test_results = test_model_comprehensive(
-            model, test_dataloader, epoch+1, pdf_path)
-        epoch_metrics = test_results['epoch_metrics']
-        individual_metrics = test_results['individual_metrics']
-        logger.log_epoch_metrics(epoch_metrics, individual_metrics, epoch)
-        # all_test_results.append(test_results)
+        if (epoch + 1) % test_every == 0:
+            test_results = test_model_comprehensive(
+                model, test_dataloader, epoch+1, pdf_path)
+            epoch_metrics = test_results['epoch_metrics']
+            individual_metrics = test_results['individual_metrics']
+            logger.log_epoch_metrics(epoch_metrics, individual_metrics, epoch)
 
         # Calculate epoch time
         epoch_time = time.time() - epoch_start_time
@@ -345,8 +341,6 @@ def train_model(
     print('\nTraining completed!')
     print(f'Best validation loss: {best_val_loss:.6f}')
 
-    # print(f'Saving test results to csv.')
-    # _save_metrics_to_csv(all_test_results, metrics_filename)
     logger.close()
 
     return train_losses, val_losses
@@ -456,7 +450,7 @@ def test_model_comprehensive(
             # Extract metrics and create results
             batch_metrics = {
                 metric: [data[metric] for data, _ in sample_data]
-                for metric in ['r2', 'rmse', 'ssim', 'psnr']
+                for metric in epoch_metrics.keys()
             }
 
             individual_metrics = [
@@ -475,12 +469,12 @@ def test_model_comprehensive(
                         if torch.is_tensor(v)
                         else v for v in values
                     ])
-
-    # Save individual results to CSV
-    # _save_individual_metrics_to_csv(all_individual_metrics)
-
-    # Calculate and print epoch-level metrics
-    # _print_epoch_metrics(epoch_metrics)
+            avg_epoch_metrics = {}
+            for metric_name, values in epoch_metrics.items():
+                # Convert any remaining tensors to Python numbers and calculate mean
+                avg_epoch_metrics[metric_name] = np.mean([
+                    v.item() if torch.is_tensor(v) else v for v in values
+                ])
 
     # Concatenate all predictions and targets
     all_predictions = torch.cat(test_predictions, dim=0)
@@ -493,7 +487,7 @@ def test_model_comprehensive(
         'epoch': epoch,
         'predictions': all_predictions,
         'targets': all_targets,
-        'epoch_metrics': epoch_metrics,
+        'epoch_metrics': avg_epoch_metrics,
         'individual_metrics': all_individual_metrics
     }
 
@@ -510,11 +504,14 @@ def _calculate_sample_metrics(y_true, y_pred):
     ss_tot = torch.sum((y_flat - torch.mean(y_flat)) ** 2)
     r2 = 1 - (ss_res / ss_tot)
 
+    psnr = PeakSignalNoiseRatio(data_range=1.0).to(y_pred.device)
+    ssim = StructuralSimilarityIndexMeasure(data_range=1.0).to(y_pred.device)
+
     return {
         'r2': r2,
         'rmse': torch.sqrt(F.mse_loss(y_hat_flat, y_flat)),
-        'ssim': ssim(y_pred, y_true, data_range=1.0),
-        'psnr': psnr(y_pred, y_true)
+        'ssim': ssim(y_pred, y_true),
+        'psnr': psnr(y_pred, y_true),
     }
 
 
@@ -530,41 +527,6 @@ def _create_individual_result(metrics, batch_idx, sample_idx, batch_size):
             else v for k, v in metrics.items()
         }
     }
-
-
-def _save_metrics_to_csv(metrics_list, base_filename):
-    # Extract epoch metrics from all dictionaries
-    epoch_metrics_list = []
-    individual_metrics_list = []
-
-    for metrics in metrics_list:
-        # Add epoch number to the metrics for reference
-        epoch_num = metrics.get('epoch', None)
-
-        # Extract and flatten epoch_metrics
-        if 'epoch_metrics' in metrics:
-            epoch_row = {'epoch': epoch_num}
-            epoch_row.update(metrics['epoch_metrics'])
-            epoch_metrics_list.append(epoch_row)
-
-        # Extract and flatten individual_metrics
-        if 'individual_metrics' in metrics:
-            individual_row = {'epoch': epoch_num}
-            individual_row.update(metrics['individual_metrics'])
-            individual_metrics_list.append(individual_row)
-
-    # Convert to DataFrames and save to CSV
-    if epoch_metrics_list:
-        epoch_df = pd.DataFrame(epoch_metrics_list)
-        epoch_filename = f"{base_filename}_epoch_metrics.csv"
-        epoch_df.to_csv(epoch_filename, index=False)
-        print(f"Epoch metrics saved to: {epoch_filename}")
-
-    if individual_metrics_list:
-        individual_df = pd.DataFrame(individual_metrics_list)
-        individual_filename = f"{base_filename}_individual_metrics.csv"
-        individual_df.to_csv(individual_filename, index=False)
-        print(f"Individual metrics saved to: {individual_filename}")
 
 
 def _print_epoch_metrics(epoch_metrics):
